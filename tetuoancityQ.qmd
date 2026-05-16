@@ -1,0 +1,700 @@
+---
+title: "Tetuoan City Power Consumption"
+author: "Alyssa Mercado"
+format: html
+editor: visual
+execute:
+  working-directory: ./
+---
+
+Uses various regression models to determine the cause of usage and predict future consumption
+
+## Cleaning and splitting the data
+
+After reading the CSV a seed is used for reproducibility. The date and time predictors are extracted to be DateTime variables and turned into unordered factors Data is split 75/25 into training and testing data sets
+
+```{r}
+#| echo: false
+#| message: false
+#| warning: false
+
+# libraries 
+library(lubridate)
+library(dplyr)
+library(glmnet)
+library(randomForest)
+library(caret)
+library(pdp)
+
+library(xgboost)
+
+tetouan <- read.csv("dataset/Tetuan City power consumption.csv", header = TRUE)
+set.seed(20260429)
+
+# extract dates and times
+tetouan$DateTime <- as.POSIXct(tetouan$DateTime, format = "%m/%d/%Y %H:%M") # //  
+tetouan$Hour   <- factor(hour(tetouan$DateTime), ordered = FALSE)
+tetouan$Weekday <- factor(wday(tetouan$DateTime, label = TRUE), ordered = FALSE)
+tetouan$Month  <- factor(month(tetouan$DateTime, label = TRUE), ordered = FALSE)
+
+tetouan <- na.omit(tetouan)
+colnames(tetouan) <- c(
+  "DateTime", "Temperature", "Humidity", "WindSpeed",
+  "GeneralDiffuse", "DiffuseFlows",
+  "Zone1", "Zone2", "Zone3",
+  "Hour", "Weekday", "Month"
+)
+
+
+# train & test data
+n <- dim(tetouan)[1]
+trainind <- sample(1:n, round(n*0.75))
+testind <- c(1:n)[-trainind]
+
+train <- tetouan[trainind, ]
+test <- tetouan[testind, ]
+
+```
+
+## Exploratory Data Analysis
+
+```{r}
+#| echo: false
+#| fig.show: hold
+#| fig.cap: "Distribution of power consumption in each zone"
+
+# general amount of power consumption per zone
+
+hist(tetouan$Zone1, main = "Zone 1 Power Consumption", xlab = "Power Consumption", col = "lightblue")
+hist(tetouan$Zone2, main = "Zone 2 Power Consumption", xlab = "Power Consumption",  col = "lightgreen")
+hist(tetouan$Zone3, main = "Zone 3 Power Consumption", xlab = "Power Consumption", col = "salmon")
+```
+
+```{r}
+#| echo: false
+#| fig.show: hold
+#| fig.cap: "Monthly power consumption per zone"
+
+boxplot(Zone1 ~ Month, data = tetouan, main = "Zone 1 by Month", xlab = "Month", ylab = "Power", col = "lightblue")
+boxplot(Zone2 ~ Month, data = tetouan, main = "Zone 2 by Month", xlab = "Month", ylab = "Power", col = "lightgreen")
+boxplot(Zone3 ~ Month, data = tetouan, main = "Zone 3 by Month", xlab = "Month", ylab = "Power", col = "salmon")
+
+```
+
+```{r}
+#| echo: false
+#| fig.show: hold
+#| fig.cap: "Weekly power consumption per zone"
+
+# power consumption by weekday
+boxplot(Zone1 ~ Weekday, data = tetouan, 
+        main = "Zone 1 by Weekday", xlab = "Weekday", ylab = "Power", col = "lightblue")
+boxplot(Zone2 ~ Weekday, data = tetouan, 
+        main = "Zone 2 by Weekday", xlab = "Weekday", ylab = "Power", col = "lightgreen")
+boxplot(Zone3 ~ Weekday, data = tetouan, 
+        main = "Zone 3 by Weekday", xlab = "Weekday", ylab = "Power", col = "salmon")
+
+```
+
+```{r}
+#| echo: false
+#| fig.show: hold
+#| fig.cap: "mean consumption by hour for each zone"
+
+
+#### mean consumption by hour for each zone
+hourly_mean <- tetouan %>%
+  group_by(Hour) %>%
+  summarise(
+    mean_zone1 = mean(Zone1),
+    mean_zone2 = mean(Zone2),
+    mean_zone3 = mean(Zone3)
+  )
+
+# convert hour from factor to numeric for plotting
+hourly_mean$HourNum <- as.numeric(as.character(hourly_mean$Hour))
+
+# 
+plot(hourly_mean$HourNum, hourly_mean$mean_zone1, type = "l", col = "blue",
+     xlab = "Hour of Day", ylab = "Mean Power Consumption (kWh)",
+     ylim = range(hourly_mean[, c("mean_zone1","mean_zone2","mean_zone3")]),
+     main = "Average Daily Power Consumption Pattern")
+lines(hourly_mean$HourNum, hourly_mean$mean_zone2, col = "green")
+lines(hourly_mean$HourNum, hourly_mean$mean_zone3, col = "salmon")
+legend("topright", legend = c("Zone1","Zone2","Zone3"), col = c("blue","green","salmon"), lty = 1)
+
+
+
+```
+
+```{r}
+#| echo: false
+#| fig.show: hold
+#| fig.cap: "aggregate temperature by month for each zone"
+
+####### aggregate temperature for plotting, monthly
+
+monthly.agg <- tetouan %>%
+  group_by(Month) %>%
+  summarise(avg.temp = mean(Temperature),
+            avg.zone1 = mean(Zone1),
+            avg.zone2 = mean(Zone2),
+            avg.zone3 = mean(Zone3))
+
+plot(monthly.agg$avg.temp, monthly.agg$avg.zone1, type = "b", pch = 19,
+     xlab = "Avg Monthly Temperature (°C)", ylab = "Average Monthly Power",
+     main = "Monthly Average Power vs Temperature (Zone 1)",  col = "blue")
+text(monthly.agg$avg.temp, monthly.agg$avg.zone1, labels = monthly.agg$Month, pos = 3, cex = 0.7)
+
+plot(monthly.agg$avg.temp, monthly.agg$avg.zone2, type = "b", pch = 19,
+     xlab = "Avg Monthly Temperature (°C)", ylab = "Average Monthly Power",
+     main = "Monthly Average Power vs Temperature (Zone 2)", col = "green")
+text(monthly.agg$avg.temp, monthly.agg$avg.zone2, labels = monthly.agg$Month, pos = 3, cex = 0.7)
+
+plot(monthly.agg$avg.temp, monthly.agg$avg.zone3, type = "b", pch = 19,
+     xlab = "Avg Monthly Temperature (°C)", ylab = "Average Monthly Power",
+     main = "Monthly Average Power vs Temperature (Zone 3)", col = "salmon")
+text(monthly.agg$avg.temp, monthly.agg$avg.zone3, labels = monthly.agg$Month, pos = 3, cex = 0.7)
+
+
+```
+
+## Multiple Linear Regression
+
+```{r}
+#| echo: false
+#| results: hide
+
+
+################################################################################
+##### mlr for zone 1
+
+# model 
+zone1lm <- lm(Zone1 ~ Temperature + Humidity + WindSpeed +  
+            GeneralDiffuse + DiffuseFlows + Hour + Weekday + Month, data = train)
+
+summary(zone1lm)
+pred <- predict(zone1lm, test)
+
+lm.mse1 <- mean((pred - test$Zone1)^2)
+print(lm.mse1)
+# 6860050
+lm.rmse1 <- sqrt(mean((pred - test$Zone1)^2))
+print(lm.rmse1)
+# 2619.17
+lm.adjr1 <- summary(zone1lm)$adj.r.squared
+print(lm.adjr1)
+#  0.8626 
+
+
+
+################################################################################
+##### mlr for zone 2
+
+# model 
+zone2lm <- lm(Zone2 ~ Temperature + Humidity + WindSpeed +  
+                GeneralDiffuse + DiffuseFlows + Hour +Weekday + Month, data = train)
+
+summary(zone2lm)
+  
+pred <- predict(zone2lm, test)
+lm.mse2 <- mean((pred - test$Zone2)^2)
+print(lm.mse2)
+# 4452233
+lm.rmse2 <- sqrt(lm.mse2)
+print(lm.rmse2)
+# 2110.031
+lm.adjr2 <- summary(zone2lm)$adj.r.squared
+print(lm.adjr2)
+# 0.834 
+
+
+
+################################################################################
+##### mlr for zone 3
+
+# model 
+zone3lm <- lm(Zone3 ~ Temperature + Humidity + WindSpeed +  
+                GeneralDiffuse + DiffuseFlows + Hour + Weekday + Month, data = train)
+
+summary(zone3lm)
+
+pred <- predict(zone3lm, test)
+lm.mse3 <- mean((pred - test$Zone3)^2)
+print(lm.mse3)
+# 5225318
+lm.rmse3 <- sqrt(lm.mse3)
+print(lm.rmse3)
+# 2285.895
+lm.adjr3 <- summary(zone3lm)$adj.r.squared
+print(lm.adjr3)
+# 0.8783 
+
+
+```
+
+```{r}
+#| echo: false
+#| results: hold
+
+# combined results
+lm.results <- data.frame( Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(lm.mse1, lm.mse2, lm.mse3), RMSE = c(lm.rmse1, lm.rmse2, lm.rmse3), R2 = c(lm.adjr1, lm.adjr2, lm.adjr3))
+
+print(lm.results)
+
+
+```
+
+
+
+## Lasso Regression
+
+```{r}
+#| echo: false
+#| results: hide
+
+xmat <- model.matrix(~ Temperature + Humidity + WindSpeed + GeneralDiffuse + DiffuseFlows + Hour + Weekday + Month, data = tetouan)[, -1]
+
+
+################################################################################
+##### lasso for zone 1
+
+y1 <- tetouan$Zone1
+
+cvfit.lasso1 <- cv.glmnet(xmat, y1, subset = trainind, alpha = 1)
+plot(cvfit.lasso1)
+lambest.lasso1 <- cvfit.lasso1$lambda.min
+lasso.zone1 <- glmnet(xmat, y1, subset = trainind, alpha = 1, lambda = lambest.lasso1)
+
+predlasso1 <- predict(lasso.zone1, s = lambest.lasso1, newx = xmat[testind, ])
+
+lasso.mse1 <- mean((predlasso1 - y1[testind])^2)
+lasso.rmse1 <- sqrt(lasso.mse1)
+lasso.adjr1 <- 1 - sum((y1[testind] - predlasso1)^2) / sum((y1[testind] - mean(y1[testind]))^2)
+
+
+print(lasso.mse1)
+# 6851830
+print(lasso.rmse1)
+# 2617.6
+print(lasso.adjr1)
+# 0.8652688
+
+
+################################################################################
+##### lasso for zone 2
+
+y2 <- tetouan$Zone2
+
+cvfit.lasso2 <- cv.glmnet(xmat, y2, subset = trainind, alpha = 1)
+plot(cvfit.lasso2)
+
+lambest.lasso2 <- cvfit.lasso2$lambda.min
+lasso.zone2 <- glmnet(xmat, y2, subset = trainind, alpha = 1, lambda = lambest.lasso2)
+
+predlasso2 <- predict(lasso.zone2, s = lambest.lasso2, newx = xmat[testind, ])
+
+lasso.mse2 <- mean((predlasso2 - y2[testind])^2)
+lasso.rmse2 <- sqrt(lasso.mse2)
+lasso.adjr2 <- 1 - sum((y2[testind] - predlasso2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
+
+print(lasso.mse2)
+# 4447962
+print(lasso.rmse2)
+# 2109.019
+print(lasso.adjr2)
+# 0.837011
+
+
+
+################################################################################
+##### lasso for zone 3
+
+y3 <- tetouan$Zone3
+
+
+cvfit.lasso3 <- cv.glmnet(xmat, y3, subset = trainind, alpha = 1)
+plot(cvfit.lasso3)
+
+lambest.lasso3 <- cvfit.lasso3$lambda.min
+lasso.zone3 <- glmnet(xmat, y3, subset = trainind, alpha = 1, lambda = lambest.lasso3)
+
+predlasso3 <- predict(lasso.zone3, s = lambest.lasso3, newx = xmat[testind, ])
+
+lasso.mse3 <- mean((predlasso3 - y3[testind])^2)
+lasso.rmse3 <- sqrt(lasso.mse3)
+lasso.adjr3 <- 1 - sum((y3[testind] - predlasso3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
+
+print(lasso.mse3)
+# 5216769
+print(lasso.rmse3)
+# 2284.025
+print(lasso.adjr3)
+# 0.879915
+
+
+
+
+```
+```{r}
+#| echo: false
+#| results: hold
+#| cache: true
+
+# combined results
+lasso.results <- data.frame( Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(lasso.mse1, lasso.mse2, lasso.mse3), RMSE = c(lasso.rmse1, lasso.rmse2, lasso.rmse3),
+                             R2 = c(lasso.adjr1, lasso.adjr2, lasso.adjr3))
+
+print(lasso.results)
+
+
+```
+
+## Ridge Regression
+
+```{r}
+#| echo: false
+#| results: hide
+#| cache: true
+
+xmat <- model.matrix( ~ Temperature + Humidity + WindSpeed + GeneralDiffuse + DiffuseFlows + Hour + Weekday + Month, data = tetouan)[, -1]
+
+
+################################################################################
+##### ridge for zone 1
+
+
+y1 <- tetouan$Zone1
+
+
+cvfit.ridge1 <- cv.glmnet(xmat, y1, subset = trainind, alpha = 0)
+plot(cvfit.ridge1)
+
+lambest.ridge1 <- cvfit.ridge1$lambda.min
+ridge.zone1 <- glmnet(xmat, y1, subset = trainind, alpha = 0, lambda = lambest.ridge1)
+
+predridge1 <- predict(ridge.zone1, s = lambest.ridge1, newx = xmat[testind, ])
+
+ridge.mse1 <- mean((predridge1 - y1[testind])^2)
+ridge.rmse1 <- sqrt(ridge.mse1)
+ridge.adjr1 <- 1 - sum((y1[testind] - predridge1)^2) /sum((y1[testind] - mean(y1[testind]))^2)
+
+
+ridge.mse1
+# 7108167
+ridge.rmse1
+# 2666.115
+ridge.adjr1
+# 0.8602283
+
+
+################################################################################
+##### ridge for zone 2
+
+y2 <- tetouan$Zone2
+
+cvfit.ridge2 <- cv.glmnet(xmat, y2, subset = trainind, alpha = 0)
+plot(cvfit.ridge2)
+
+lambest.ridge2 <- cvfit.ridge2$lambda.min
+ridge.zone2 <- glmnet(xmat, y2, subset = trainind, alpha = 0, lambda = lambest.ridge2)
+
+predridge2 <- predict(ridge.zone2, s = lambest.ridge2, newx = xmat[testind, ])
+
+ridge.mse2 <- mean((predridge2 - y2[testind])^2)
+ridge.rmse2 <- sqrt(ridge.mse2)
+ridge.adjr2 <- 1 - sum((y2[testind] - predridge2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
+
+
+ridge.mse2
+# 4589123
+ridge.rmse2
+#  2142.224
+ridge.adjr2
+# 0.8318384
+
+
+
+################################################################################
+##### ridge for zone 3
+
+y3 <- tetouan$Zone3
+
+cvfit.ridge3 <- cv.glmnet(xmat, y3, subset = trainind, alpha = 0)
+plot(cvfit.ridge3)
+
+lambest.ridge3 <- cvfit.ridge3$lambda.min
+ridge.zone3 <- glmnet(xmat, y3, subset = trainind, alpha = 0, lambda = lambest.ridge3)
+
+predridge3 <- predict(ridge.zone3, s = lambest.ridge3, newx = xmat[testind, ])
+
+ridge.mse3 <- mean((predridge3 - y3[testind])^2)
+ridge.rmse3 <- sqrt(ridge.mse3)
+ridge.adjr3 <- 1 - sum((y3[testind] - predridge3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
+
+
+ridge.mse3
+# 5305718
+ridge.rmse3
+# 2303.415
+ridge.adjr3
+# 0.8778675
+
+
+```
+
+```{r}
+#| echo: false
+#| results: hold
+
+
+# results comparison
+ridge.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"),MSE = c(ridge.mse1, ridge.mse2, ridge.mse3), RMSE = c(ridge.rmse1, ridge.rmse2, ridge.rmse3), R2 = c(ridge.adjr1, ridge.adjr2, ridge.adjr3))
+
+print(ridge.results)
+
+
+```
+
+
+## Random Forest
+
+```{r}
+#| echo: false
+#| results: hide
+#| cache: true
+
+ctrl <- trainControl(method = "cv", number = 3)  
+
+################################################################################
+##### random forest for zone 1
+
+rfZone1 <- randomForest(Zone1 ~ Month + Hour + Weekday + Temperature + Humidity + WindSpeed + GeneralDiffuse + DiffuseFlows, data = train, ntree = 100, importance = TRUE)
+
+# prediction
+predrf1 <- predict(rfZone1, test)
+
+
+rf.mse1 <- mean((predrf1 - test$Zone1)^2)
+rf.mse1
+# 1367986
+
+rf.rmse1 <- sqrt(rf.mse1)
+rf.rmse1
+# 1169.609
+
+y1 <- test$Zone1
+yhat1 <- predrf1
+rf.adjr1 <- 1 - sum((y1 - yhat1)^2) / sum((y1 - mean(y1))^2)
+rf.adjr1
+# 0.9731005
+
+
+
+################################################################################
+##### random forest for zone 2
+
+rfZone2 <- randomForest(Zone2 ~ Month + Hour + Weekday + Temperature + Humidity + WindSpeed + GeneralDiffuse + DiffuseFlows, data = train, ntree = 100, importance = TRUE)
+
+# prediction
+predrf2 <- predict(rfZone2, test)
+
+rf.mse2 <- mean((predrf2 - test$Zone2)^2)
+rf.mse2
+# 753378.6
+
+rf.rmse2 <- sqrt(rf.mse2)
+rf.rmse2
+# 867.9738
+
+y2 <- test$Zone2
+yhat2 <- predrf2
+rf.adjr2 <- 1 - sum((y2 - yhat2)^2) / sum((y2 - mean(y2))^2)
+rf.adjr2
+# 0.9723936
+
+
+
+################################################################################
+##### random forest zone 3
+
+rfZone3 <- randomForest(Zone3 ~ Month + Hour + Weekday + Temperature + Humidity + WindSpeed + GeneralDiffuse + DiffuseFlows, data = train, ntree = 100, importance = TRUE)
+
+# prediction
+predrf3 <- predict(rfZone3, test)
+
+rf.mse3 <- mean((predrf3 - test$Zone3)^2)
+rf.mse3
+# 748996.2
+
+rf.rmse3 <- sqrt(rf.mse3)
+rf.rmse3
+# 865.4457
+
+y3 <- test$Zone3
+yhat3 <- predrf3
+rf.adjr3 <- 1 - sum((y3 - yhat3)^2) / sum((y3 - mean(y3))^2)
+rf.adjr3
+# 0.9827588
+
+
+
+
+# importance plots
+varImpPlot(rfZone1, main = "Zone 1")
+varImpPlot(rfZone2, main = "Zone 2")
+varImpPlot(rfZone3, main = "Zone 3")
+
+plot(rfZone1$mse, type="l", lwd=2,
+     xlab="Number of Trees",
+     ylab="OOB MSE",
+     main="OOB Error - Zone 1")
+
+
+```
+
+
+```{r}
+#| echo: false
+#| results: hold
+
+
+# results comparison
+rf.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(rf.mse1, rf.mse2, rf.mse3), RMSE = c(rf.rmse1, rf.rmse2, rf.rmse3), R2 = c(rf.adjr1, rf.adjr2, rf.adjr3))
+
+print(rf.results)
+
+
+```
+
+
+
+## Gradient Boosting
+
+```{r}
+#| echo: false
+#| results: hide
+#| cache: true
+#| message: false
+#| warning: false
+
+# revert hour, improves the results of gradient boosting 
+train$HourNum <- as.numeric(as.character(train$Hour))  
+test$HourNum  <- as.numeric(as.character(test$Hour))
+
+predictors.xgb <- c("Temperature", "Humidity", "WindSpeed", 
+                    "GeneralDiffuse", "DiffuseFlows", 
+                    "HourNum", "Weekday", "Month")
+
+train.x <- model.matrix(~ . - 1, data = train[, predictors.xgb])
+test.x  <- model.matrix(~ . - 1, data = test[, predictors.xgb])
+
+dtrain1 <- xgb.DMatrix(data = train.x, label = train$Zone1)
+dtest1  <- xgb.DMatrix(data = test.x, label = test$Zone1)
+
+
+# zone 1
+zone1cv <- xgb.cv(data = dtrain1, nrounds = 1000, nfold = 10,  max_depth = 5, 
+                  verbose = 0, eta = 0.6, early_stopping_rounds = 20)
+
+
+cvlog <- zone1cv$evaluation_log
+best.nrounds1 <- which.min(cvlog$test_rmse_mean)
+
+zone1xgmodel <- xgboost(data = train.x, label = train$Zone1, nrounds = best.nrounds1,
+                  verbose = 0, params = list(max_depth = 5, eta = 0.6))
+
+predxg1 <- predict(zone1xgmodel, test.x)
+xg.mse1 <- mean((predxg1 - test$Zone1)^2)
+xg.mse1
+# 1179826
+xg.rmse1 <- sqrt(xg.mse1)
+xg.rmse1
+# 1086.198
+
+
+
+
+# zone 2
+
+dtrain2 <- xgb.DMatrix(data = train.x, label = train$Zone2)
+dtest2 <- xgb.DMatrix(data = test.x, label = test$Zone2)
+
+zone2cv <- xgb.cv(data = dtrain2, nrounds = 1000, nfold = 10, verbose = 0,
+                  max_depth = 5, eta = 0.5, early_stopping_rounds = 20)
+
+
+cvlog2 <- zone2cv$evaluation_log
+best.nrounds2 <- which.min(cvlog2$test_rmse_mean)
+
+zone2xgmodel <- xgboost(data = train.x, label = train$Zone2, nrounds = best.nrounds2,
+                        verbose = 0, params = list(max_depth = 5, eta = 0.5))
+
+predxg2 <- predict(zone2xgmodel, test.x)
+xg.mse2 <- mean((predxg2 - test$Zone2)^2)
+xg.mse2
+# 605373
+xg.rmse2 <- sqrt(xg.mse2)
+xg.rmse2
+# 778.0572
+  
+
+
+
+# zone 3
+
+dtrain3 <- xgb.DMatrix(data = train.x, label = train$Zone3)
+dtest3 <- xgb.DMatrix(data = test.x, label = test$Zone3)
+
+zone3cv <- xgb.cv(data = dtrain3, nrounds = 1000, nfold = 10, verbose = 0,
+                  max_depth = 5, eta = 0.5, early_stopping_rounds = 20)
+
+
+cvlog3 <- zone3cv$evaluation_log
+best.nrounds3 <- which.min(cvlog3$test_rmse_mean)
+
+zone3xgmodel <- xgboost(data = train.x, label = train$Zone3, nrounds = best.nrounds3,
+                        verbose = 0, params = list(max_depth = 5, eta = 0.5))
+
+predxg3 <- predict(zone3xgmodel, test.x)
+xg.mse3 <- mean((predxg3 - test$Zone3)^2)
+xg.mse3
+# 606962.7 
+xg.rmse3 <- sqrt(xg.mse3)
+xg.rmse3
+# 779.0781
+
+
+# feature importance for zone 1
+importance1 <- xgb.importance(model = zone1xgmodel, feature_names = colnames(train.x))
+xgb.plot.importance(importance1, main = "Zone 1 - Feature Importance")
+
+# feature importance for zone 2
+importance2 <- xgb.importance(model = zone2xgmodel, feature_names = colnames(train.x))
+xgb.plot.importance(importance2, main = "Zone 2 - Feature Importance")
+
+# feature importance for zone 3
+importance3 <- xgb.importance(model = zone3xgmodel, feature_names = colnames(train.x))
+xgb.plot.importance(importance3, main = "Zone 3 - Feature Importance")
+
+
+
+```
+
+
+
+
+```{r}
+#| echo: false
+#| results: hold
+
+
+# results comparison
+xg.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(xg.mse1, xg.mse2, xg.mse3), RMSE = c(xg.rmse1, xg.rmse2, xg.rmse3))
+
+print(xg.results)
+
+
+```
+
+
