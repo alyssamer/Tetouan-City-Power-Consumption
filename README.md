@@ -14,14 +14,14 @@ Originally a project for my course Statistical Learning and Big Data, we had to 
 
 ## Results
 Gradient boosting (XGBoost) had the lowest RMSE & best R^2
-      - Zone 1 --- RMSE: 1086 --- R^2: 97.69%
-      - Zone 2 --- RMSE: 778 --- R^2: 97.78%
-      - Zone 3 --- RMSE: 779 --- R^2: 98.62%
-      s
+- Zone 1 --- RMSE: 1086 --- R^2: 97.69%
+- Zone 2 --- RMSE: 778 --- R^2: 97.78%
+- Zone 3 --- RMSE: 779 --- R^2: 98.62%
+      
 Random forest performed very similarly, is more interpretable and not as computationally expensive so it likely would be chosen model
-      - Zone 1 --- RMSE: 1170 --- R^2: 97.31%
-      - Zone 2 --- RMSE: 867 --- R^2: 97.24%
-      - Zone 3 --- RMSE: 865 --- R^2: 98.28%
+- Zone 1 --- RMSE: 1170 --- R^2: 97.31%
+- Zone 2 --- RMSE: 867 --- R^2: 97.24%
+- Zone 3 --- RMSE: 865 --- R^2: 98.28%
 
 
 
