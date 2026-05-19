@@ -270,14 +270,14 @@ predlasso1 <- predict(lasso.zone1, s = lambest.lasso1, newx = xmat[testind, ])
 
 lasso.mse1 <- mean((predlasso1 - y1[testind])^2)
 lasso.rmse1 <- sqrt(lasso.mse1)
-lasso.adjr1 <- 1 - sum((y1[testind] - predlasso1)^2) / sum((y1[testind] - mean(y1[testind]))^2)
+lasso.r1 <- 1 - sum((y1[testind] - predlasso1)^2) / sum((y1[testind] - mean(y1[testind]))^2)
 
 
 print(lasso.mse1)
 # 6851830
 print(lasso.rmse1)
 # 2617.6
-print(lasso.adjr1)
+print(lasso.r1)
 # 0.8652688
 
 
@@ -296,13 +296,13 @@ predlasso2 <- predict(lasso.zone2, s = lambest.lasso2, newx = xmat[testind, ])
 
 lasso.mse2 <- mean((predlasso2 - y2[testind])^2)
 lasso.rmse2 <- sqrt(lasso.mse2)
-lasso.adjr2 <- 1 - sum((y2[testind] - predlasso2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
+lasso.r2 <- 1 - sum((y2[testind] - predlasso2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
 
 print(lasso.mse2)
 # 4447962
 print(lasso.rmse2)
 # 2109.019
-print(lasso.adjr2)
+print(lasso.r2)
 # 0.837011
 
 
@@ -323,13 +323,13 @@ predlasso3 <- predict(lasso.zone3, s = lambest.lasso3, newx = xmat[testind, ])
 
 lasso.mse3 <- mean((predlasso3 - y3[testind])^2)
 lasso.rmse3 <- sqrt(lasso.mse3)
-lasso.adjr3 <- 1 - sum((y3[testind] - predlasso3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
+lasso.r3 <- 1 - sum((y3[testind] - predlasso3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
 
 print(lasso.mse3)
 # 5216769
 print(lasso.rmse3)
 # 2284.025
-print(lasso.adjr3)
+print(lasso.r3)
 # 0.879915
 
 
@@ -343,7 +343,7 @@ print(lasso.adjr3)
 
 # combined results
 lasso.results <- data.frame( Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(lasso.mse1, lasso.mse2, lasso.mse3), RMSE = c(lasso.rmse1, lasso.rmse2, lasso.rmse3),
-                             R2 = c(lasso.adjr1, lasso.adjr2, lasso.adjr3))
+                             R2 = c(lasso.r1, lasso.r2, lasso.r3))
 
 print(lasso.results)
 
@@ -377,14 +377,14 @@ predridge1 <- predict(ridge.zone1, s = lambest.ridge1, newx = xmat[testind, ])
 
 ridge.mse1 <- mean((predridge1 - y1[testind])^2)
 ridge.rmse1 <- sqrt(ridge.mse1)
-ridge.adjr1 <- 1 - sum((y1[testind] - predridge1)^2) /sum((y1[testind] - mean(y1[testind]))^2)
+ridge.r1 <- 1 - sum((y1[testind] - predridge1)^2) /sum((y1[testind] - mean(y1[testind]))^2)
 
 
 ridge.mse1
 # 7108167
 ridge.rmse1
 # 2666.115
-ridge.adjr1
+ridge.r1
 # 0.8602283
 
 
@@ -403,14 +403,14 @@ predridge2 <- predict(ridge.zone2, s = lambest.ridge2, newx = xmat[testind, ])
 
 ridge.mse2 <- mean((predridge2 - y2[testind])^2)
 ridge.rmse2 <- sqrt(ridge.mse2)
-ridge.adjr2 <- 1 - sum((y2[testind] - predridge2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
+ridge.r2 <- 1 - sum((y2[testind] - predridge2)^2) /sum((y2[testind] - mean(y2[testind]))^2)
 
 
 ridge.mse2
 # 4589123
 ridge.rmse2
 #  2142.224
-ridge.adjr2
+ridge.r2
 # 0.8318384
 
 
@@ -430,14 +430,14 @@ predridge3 <- predict(ridge.zone3, s = lambest.ridge3, newx = xmat[testind, ])
 
 ridge.mse3 <- mean((predridge3 - y3[testind])^2)
 ridge.rmse3 <- sqrt(ridge.mse3)
-ridge.adjr3 <- 1 - sum((y3[testind] - predridge3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
+ridge.r3 <- 1 - sum((y3[testind] - predridge3)^2) / sum((y3[testind] - mean(y3[testind]))^2)
 
 
 ridge.mse3
 # 5305718
 ridge.rmse3
 # 2303.415
-ridge.adjr3
+ridge.r3
 # 0.8778675
 
 
@@ -449,7 +449,7 @@ ridge.adjr3
 
 
 # results comparison
-ridge.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"),MSE = c(ridge.mse1, ridge.mse2, ridge.mse3), RMSE = c(ridge.rmse1, ridge.rmse2, ridge.rmse3), R2 = c(ridge.adjr1, ridge.adjr2, ridge.adjr3))
+ridge.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"),MSE = c(ridge.mse1, ridge.mse2, ridge.mse3), RMSE = c(ridge.rmse1, ridge.rmse2, ridge.rmse3), R2 = c(ridge.r1, ridge.r2, ridge.r3))
 
 print(ridge.results)
 
@@ -485,8 +485,8 @@ rf.rmse1
 
 y1 <- test$Zone1
 yhat1 <- predrf1
-rf.adjr1 <- 1 - sum((y1 - yhat1)^2) / sum((y1 - mean(y1))^2)
-rf.adjr1
+rf.r1 <- 1 - sum((y1 - yhat1)^2) / sum((y1 - mean(y1))^2)
+rf.r1
 # 0.9731005
 
 
@@ -509,8 +509,8 @@ rf.rmse2
 
 y2 <- test$Zone2
 yhat2 <- predrf2
-rf.adjr2 <- 1 - sum((y2 - yhat2)^2) / sum((y2 - mean(y2))^2)
-rf.adjr2
+rf.r2 <- 1 - sum((y2 - yhat2)^2) / sum((y2 - mean(y2))^2)
+rf.r2
 # 0.9723936
 
 
@@ -533,8 +533,8 @@ rf.rmse3
 
 y3 <- test$Zone3
 yhat3 <- predrf3
-rf.adjr3 <- 1 - sum((y3 - yhat3)^2) / sum((y3 - mean(y3))^2)
-rf.adjr3
+rf.r3 <- 1 - sum((y3 - yhat3)^2) / sum((y3 - mean(y3))^2)
+rf.r3
 # 0.9827588
 
 
@@ -560,7 +560,7 @@ plot(rfZone1$mse, type="l", lwd=2,
 
 
 # results comparison
-rf.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(rf.mse1, rf.mse2, rf.mse3), RMSE = c(rf.rmse1, rf.rmse2, rf.rmse3), R2 = c(rf.adjr1, rf.adjr2, rf.adjr3))
+rf.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(rf.mse1, rf.mse2, rf.mse3), RMSE = c(rf.rmse1, rf.rmse2, rf.rmse3), R2 = c(rf.r1, rf.r2, rf.r3))
 
 print(rf.results)
 
@@ -612,6 +612,13 @@ xg.rmse1 <- sqrt(xg.mse1)
 xg.rmse1
 # 1086.198
 
+# adj r^2
+y1 <- test$Zone1
+yhat1 <- predxg1
+
+xg.r1 <- 1 - sum((y1 - yhat1)^2) / sum((y1 - mean(y1))^2)
+xg.r1
+# 0.9769428
 
 
 
@@ -637,7 +644,14 @@ xg.mse2
 xg.rmse2 <- sqrt(xg.mse2)
 xg.rmse2
 # 778.0572
-  
+
+# adj r^2
+y2 <- test$Zone2
+yhat2 <- predxg2
+
+xg.r2 <- 1 - sum((y2 - yhat2)^2) / sum((y2 - mean(y2))^2)
+xg.r2
+# 0.9778449
 
 
 
@@ -663,6 +677,14 @@ xg.mse3
 xg.rmse3 <- sqrt(xg.mse3)
 xg.rmse3
 # 779.0781
+
+# adj r^2
+y3 <- test$Zone3
+yhat3 <- predxg3
+
+xg.r3 <- 1 - sum((y3 - yhat3)^2) / sum((y3 - mean(y3))^2)
+xg.r3
+# 0.9862043
 
 
 # feature importance for zone 1
@@ -690,7 +712,7 @@ xgb.plot.importance(importance3, main = "Zone 3 - Feature Importance")
 
 
 # results comparison
-xg.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(xg.mse1, xg.mse2, xg.mse3), RMSE = c(xg.rmse1, xg.rmse2, xg.rmse3))
+xg.results <- data.frame(Zone = c("Zone 1", "Zone 2", "Zone 3"), MSE = c(xg.mse1, xg.mse2, xg.mse3), RMSE = c(xg.rmse1, xg.rmse2, xg.rmse3), R^2 = c(xg.r1, xg.r2, xg.r3))
 
 print(xg.results)
 
